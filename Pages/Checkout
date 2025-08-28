@@ -1,0 +1,208 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { CartItem } from "@/entities/CartItem";
+import { Product } from "@/entities/Product";
+import { User } from "@/entities/User";
+import { Order } from "@/entities/Order";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, CheckCircle, Package } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
+
+export default function Checkout() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [cartItems, setCartItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [address, setAddress] = useState({
+    street: "",
+    city: "",
+    postal_code: "",
+    phone: ""
+  });
+
+  const loadCartItems = useCallback(async (currentUser) => {
+    if (!currentUser) return;
+    try {
+      const items = await CartItem.filter({ user_email: currentUser.email });
+      const itemsWithProducts = await Promise.all(
+        items.map(async (item) => {
+          const products = await Product.filter({ id: item.product_id });
+          return { ...item, product: products[0] || null };
+        })
+      );
+      setCartItems(itemsWithProducts.filter(item => item.product !== null));
+    } catch (error) {
+      toast.error("Failed to load cart for checkout");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const currentUser = await User.me();
+        setUser(currentUser);
+        await loadCartItems(currentUser);
+      } catch (error) {
+        setUser(null);
+        setLoading(false);
+      }
+    };
+    init();
+  }, [loadCartItems]);
+
+  const handleAddressChange = (e) => {
+    setAddress({ ...address, [e.target.id]: e.target.value });
+  };
+
+  const calculateTotal = () => {
+    return cartItems.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+  };
+
+  const handlePlaceOrder = async () => {
+    if (isPlacingOrder) return;
+    setIsPlacingOrder(true);
+    
+    if (!address.street || !address.city || !address.postal_code || !address.phone) {
+      toast.error("Please fill in all address fields.");
+      setIsPlacingOrder(false);
+      return;
+    }
+
+    try {
+      const orderItems = cartItems.map(item => ({
+        product_id: item.product.id,
+        product_name: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity
+      }));
+
+      await Order.create({
+        user_email: user.email,
+        items: orderItems,
+        total_amount: calculateTotal(),
+        delivery_address: address,
+        status: 'pending'
+      });
+
+      // Clear the cart
+      const cartItemIds = cartItems.map(item => item.id);
+      for (const id of cartItemIds) {
+        await CartItem.delete(id);
+      }
+      
+      toast.success("Order placed successfully!");
+      navigate(createPageUrl("Orders"));
+
+    } catch (error) {
+      toast.error("Failed to place order. Please try again.");
+      console.error("Order placement error:", error);
+    } finally {
+      setIsPlacingOrder(false);
+    }
+  };
+  
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+  
+  if (!user) {
+    return (
+        <div className="min-h-screen flex items-center justify-center text-center">
+            <div>
+                <h1 className="text-2xl font-bold mb-4">Please Sign In</h1>
+                <Button onClick={() => User.loginWithRedirect(window.location.href)}>Sign In</Button>
+            </div>
+        </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen pt-8 pb-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <Link to={createPageUrl("Cart")} className="inline-flex items-center text-slate-600 hover:text-slate-900 transition-colors">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Cart
+          </Link>
+          <h1 className="text-3xl font-bold text-slate-900 mt-2">Checkout</h1>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Shipping Details */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle>Shipping Address</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="street">Street Address</Label>
+                <Input id="street" value={address.street} onChange={handleAddressChange} />
+              </div>
+              <div>
+                <Label htmlFor="city">City</Label>
+                <Input id="city" value={address.city} onChange={handleAddressChange} />
+              </div>
+              <div>
+                <Label htmlFor="postal_code">Postal Code</Label>
+                <Input id="postal_code" value={address.postal_code} onChange={handleAddressChange} />
+              </div>
+              <div>
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input id="phone" type="tel" value={address.phone} onChange={handleAddressChange} />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Order Summary */}
+          <div className="space-y-8">
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle>Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {cartItems.map(item => (
+                  <div key={item.id} className="flex justify-between">
+                    <span className="text-slate-600">{item.product.name} x {item.quantity}</span>
+                    <span className="font-medium">₹{(item.product.price * item.quantity).toLocaleString('en-IN')}</span>
+                  </div>
+                ))}
+                <div className="border-t pt-4 mt-2">
+                  <div className="flex justify-between text-lg font-semibold">
+                    <span>Total</span>
+                    <span>₹{calculateTotal().toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle>Payment Method</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center space-x-2 p-4 border rounded-lg bg-slate-50">
+                  <Package className="w-5 h-5 text-slate-600" />
+                  <span className="font-medium">Cash on Delivery</span>
+                </div>
+              </CardContent>
+            </Card>
+            <Button 
+              className="w-full text-lg py-6 bg-gradient-to-r from-green-500 to-green-600"
+              onClick={handlePlaceOrder}
+              disabled={isPlacingOrder || cartItems.length === 0}
+            >
+              <CheckCircle className="w-5 h-5 mr-2" />
+              {isPlacingOrder ? 'Placing Order...' : `Place Order - ₹${calculateTotal().toLocaleString('en-IN')}`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
