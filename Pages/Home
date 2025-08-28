@@ -1,0 +1,219 @@
+import React, { useState, useEffect } from "react";
+import { Product } from "@/entities/Product";
+import { CartItem } from "@/entities/CartItem";
+import { User } from "@/entities/User";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Search, Filter, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import ProductCard from "../components/ProductCard";
+
+export default function Home() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [user, setUser] = useState(null);
+
+  const categories = [
+    { value: "all", label: "All Products" },
+    { value: "electronics", label: "Electronics" },
+    { value: "clothing", label: "Clothing" },
+    { value: "books", label: "Books" },
+    { value: "home", label: "Home" },
+    { value: "sports", label: "Sports" },
+    { value: "beauty", label: "Beauty" }
+  ];
+
+  useEffect(() => {
+    loadProducts();
+    loadUser();
+  }, []);
+
+  const loadProducts = async () => {
+    try {
+      const data = await Product.list("-created_date");
+      setProducts(data);
+    } catch (error) {
+      console.error("Error loading products:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await User.me();
+      setUser(currentUser);
+    } catch (error) {
+      setUser(null);
+    }
+  };
+
+  const handleAddToCart = async (product) => {
+    if (!user) {
+      User.loginWithRedirect(window.location.href);
+      return;
+    }
+
+    try {
+      // Check if item already in cart
+      const existingCartItems = await CartItem.filter({ 
+        user_email: user.email, 
+        product_id: product.id 
+      });
+
+      if (existingCartItems.length > 0) {
+        // Update quantity
+        await CartItem.update(existingCartItems[0].id, {
+          quantity: existingCartItems[0].quantity + 1
+        });
+      } else {
+        // Add new item to cart
+        await CartItem.create({
+          user_email: user.email,
+          product_id: product.id,
+          quantity: 1
+        });
+      }
+
+      toast.success(`${product.name} added to cart!`);
+    } catch (error) {
+      toast.error("Failed to add item to cart");
+      console.error("Error adding to cart:", error);
+    }
+  };
+
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         product.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const featuredProducts = products.filter(p => p.featured);
+
+  return (
+    <div className="min-h-screen">
+      {/* Hero Section */}
+      <section className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center space-y-6">
+            <div className="flex items-center justify-center space-x-2 mb-4">
+              <Sparkles className="w-8 h-8 text-amber-400" />
+              <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Premium Collection
+              </Badge>
+            </div>
+            <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+              Luxury Shopping
+            </h1>
+            <p className="text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+              Discover our curated collection of premium products, crafted with excellence and designed for discerning tastes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Search & Filters */}
+      <section className="py-8 bg-white/50 backdrop-blur-sm border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row gap-4 items-center">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Input
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 bg-white/80 border-slate-200"
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2 overflow-x-auto">
+              <Filter className="w-5 h-5 text-slate-500 flex-shrink-0" />
+              {categories.map((category) => (
+                <Button
+                  key={category.value}
+                  variant={selectedCategory === category.value ? "default" : "outline"}
+                  onClick={() => setSelectedCategory(category.value)}
+                  className={`whitespace-nowrap ${
+                    selectedCategory === category.value
+                      ? "bg-gradient-to-r from-amber-500 to-amber-600"
+                      : ""
+                  }`}
+                >
+                  {category.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Products */}
+      {featuredProducts.length > 0 && (
+        <section className="py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">Featured Products</h2>
+              <p className="text-slate-600 max-w-2xl mx-auto">
+                Hand-picked premium items that represent the best of our collection
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {featuredProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAddToCart={handleAddToCart}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* All Products */}
+      <section className="py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">All Products</h2>
+            <p className="text-slate-600">
+              Showing {filteredProducts.length} products
+              {selectedCategory !== "all" && ` in ${categories.find(c => c.value === selectedCategory)?.label}`}
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl p-6 animate-pulse">
+                  <div className="aspect-square bg-slate-200 rounded-lg mb-4"></div>
+                  <div className="h-4 bg-slate-200 rounded mb-2"></div>
+                  <div className="h-3 bg-slate-200 rounded mb-4 w-2/3"></div>
+                  <div className="h-8 bg-slate-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="text-slate-400 text-lg">No products found matching your criteria</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAddToCart={handleAddToCart}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
