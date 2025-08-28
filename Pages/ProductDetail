@@ -1,0 +1,259 @@
+import React, { useState, useEffect } from "react";
+import { Product } from "@/entities/Product";
+import { CartItem } from "@/entities/CartItem";
+import { User } from "@/entities/User";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, ShoppingCart, Star, Truck, Shield, RefreshCw, ImageIcon } from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
+
+export default function ProductDetail() {
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const productId = urlParams.get('id');
+    if (productId) {
+      loadProduct(productId);
+    }
+    loadUser();
+  }, []);
+
+  const loadProduct = async (productId) => {
+    try {
+      const products = await Product.filter({ id: productId });
+      if (products.length > 0) {
+        setProduct(products[0]);
+      }
+    } catch (error) {
+      console.error("Error loading product:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await User.me();
+      setUser(currentUser);
+    } catch (error) {
+      setUser(null);
+    }
+  };
+
+  const handleAddToCart = async () => {
+    if (!user) {
+      User.loginWithRedirect(window.location.href);
+      return;
+    }
+
+    try {
+      const existingCartItems = await CartItem.filter({ 
+        user_email: user.email, 
+        product_id: product.id 
+      });
+
+      if (existingCartItems.length > 0) {
+        await CartItem.update(existingCartItems[0].id, {
+          quantity: existingCartItems[0].quantity + quantity
+        });
+      } else {
+        await CartItem.create({
+          user_email: user.email,
+          product_id: product.id,
+          quantity: quantity
+        });
+      }
+
+      toast.success(`${product.name} added to cart!`);
+    } catch (error) {
+      toast.error("Failed to add item to cart");
+      console.error("Error adding to cart:", error);
+    }
+  };
+
+  const getImageUrl = () => {
+    if (imageError || !product?.image) {
+      return null;
+    }
+    return product.image;
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-2 gap-12">
+            <div className="aspect-square bg-slate-200 animate-pulse rounded-2xl"></div>
+            <div className="space-y-6">
+              <div className="h-8 bg-slate-200 animate-pulse rounded"></div>
+              <div className="h-4 bg-slate-200 animate-pulse rounded w-3/4"></div>
+              <div className="h-6 bg-slate-200 animate-pulse rounded w-1/4"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen pt-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-2xl font-bold text-slate-900">Product not found</h1>
+          <Link to={createPageUrl("Home")}>
+            <Button className="mt-4">Back to Products</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen pt-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Breadcrumb */}
+        <div className="mb-8">
+          <Link to={createPageUrl("Home")} className="inline-flex items-center text-slate-600 hover:text-slate-900 transition-colors">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Products
+          </Link>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-12 mb-16">
+          {/* Product Image */}
+          <div className="space-y-4">
+            <div className="aspect-square overflow-hidden rounded-2xl bg-white shadow-lg">
+              {getImageUrl() ? (
+                <img
+                  src={getImageUrl()}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                  onError={handleImageError}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                  <ImageIcon className="w-20 h-20 text-slate-400" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Product Details */}
+          <div className="space-y-6">
+            <div>
+              {product.featured && (
+                <Badge className="bg-gradient-to-r from-amber-500 to-amber-600 text-white border-0 mb-4">
+                  Featured Product
+                </Badge>
+              )}
+              
+              <h1 className="text-4xl font-bold text-slate-900 mb-4">{product.name}</h1>
+              
+              <div className="flex items-center space-x-4 mb-6">
+                <div className="flex items-center space-x-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="w-5 h-5 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <span className="text-slate-600">(125 reviews)</span>
+              </div>
+
+              <p className="text-lg text-slate-600 leading-relaxed mb-6">
+                {product.description}
+              </p>
+
+              <div className="flex items-center space-x-4 mb-8">
+                <span className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                  ₹{product.price.toLocaleString('en-IN')}
+                </span>
+                {product.stock > 0 ? (
+                  <Badge className="bg-green-100 text-green-800">
+                    {product.stock} in stock
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-100 text-red-800">
+                    Out of stock
+                  </Badge>
+                )}
+              </div>
+
+              {/* Quantity & Add to Cart */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-4">
+                  <label className="text-sm font-medium text-slate-700">Quantity:</label>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      disabled={quantity <= 1}
+                    >
+                      -
+                    </Button>
+                    <span className="w-12 text-center font-medium">{quantity}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuantity(quantity + 1)}
+                      disabled={quantity >= product.stock}
+                    >
+                      +
+                    </Button>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleAddToCart}
+                  disabled={product.stock <= 0}
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-lg py-6"
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2" />
+                  Add to Cart - ₹{(product.price * quantity).toLocaleString('en-IN')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Features */}
+        <div className="grid md:grid-cols-3 gap-6 mb-16">
+          <Card className="text-center border-0 shadow-sm">
+            <CardContent className="p-6">
+              <Truck className="w-8 h-8 text-amber-600 mx-auto mb-4" />
+              <h3 className="font-semibold text-slate-900 mb-2">Free Shipping</h3>
+              <p className="text-slate-600 text-sm">Free shipping on orders over $100</p>
+            </CardContent>
+          </Card>
+
+          <Card className="text-center border-0 shadow-sm">
+            <CardContent className="p-6">
+              <Shield className="w-8 h-8 text-amber-600 mx-auto mb-4" />
+              <h3 className="font-semibold text-slate-900 mb-2">Secure Payment</h3>
+              <p className="text-slate-600 text-sm">Your payment information is safe with us</p>
+            </CardContent>
+          </Card>
+
+          <Card className="text-center border-0 shadow-sm">
+            <CardContent className="p-6">
+              <RefreshCw className="w-8 h-8 text-amber-600 mx-auto mb-4" />
+              <h3 className="font-semibold text-slate-900 mb-2">Easy Returns</h3>
+              <p className="text-slate-600 text-sm">30-day hassle-free returns</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
