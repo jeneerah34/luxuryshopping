@@ -1,0 +1,50 @@
+{
+  "name": "CartItem",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User's email address"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Product ID reference"
+    },
+    "quantity": {
+      "type": "number",
+      "default": 1,
+      "description": "Item quantity"
+    }
+  },
+  "required": [
+    "user_email",
+    "product_id",
+    "quantity"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
