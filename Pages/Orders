@@ -1,0 +1,112 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { Order } from "@/entities/Order";
+import { User } from "@/entities/User";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Package } from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+
+export default function Orders() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+
+  const loadOrders = useCallback(async (currentUser) => {
+    if (!currentUser) return;
+    try {
+      const userOrders = await Order.filter({ user_email: currentUser.email }, "-created_date");
+      setOrders(userOrders);
+    } catch (error) {
+      console.error("Failed to load orders:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const currentUser = await User.me();
+        setUser(currentUser);
+        await loadOrders(currentUser);
+      } catch (error) {
+        setUser(null);
+        setLoading(false);
+      }
+    };
+    init();
+  }, [loadOrders]);
+  
+  if (loading) {
+      return <div className="text-center py-12">Loading your orders...</div>;
+  }
+  
+  if (!user) {
+    return (
+        <div className="min-h-screen flex items-center justify-center text-center">
+            <div>
+                <h1 className="text-2xl font-bold mb-4">Please Sign In</h1>
+                <p className="text-slate-600 mb-6">Sign in to view your order history.</p>
+                <Button onClick={() => User.loginWithRedirect(window.location.href)}>Sign In</Button>
+            </div>
+        </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen pt-8 pb-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900">My Orders</h1>
+        </div>
+        
+        {orders.length === 0 ? (
+          <div className="text-center py-16">
+            <Package className="w-16 h-16 text-slate-300 mx-auto mb-6" />
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">No Orders Found</h2>
+            <p className="text-slate-600 mb-8">You haven't placed any orders yet.</p>
+            <Link to={createPageUrl("Home")}>
+              <Button>Start Shopping</Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {orders.map(order => (
+              <Card key={order.id} className="border-0 shadow-lg">
+                <CardHeader className="flex flex-row justify-between items-start">
+                  <div>
+                    <CardTitle>Order #{order.id.slice(-8)}</CardTitle>
+                    <p className="text-sm text-slate-600">
+                      Placed on {new Date(order.created_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Badge variant={
+                    order.status === 'delivered' ? 'default' :
+                    order.status === 'shipped' ? 'secondary' :
+                    order.status === 'confirmed' ? 'outline' : 'destructive'
+                  }>{order.status}</Badge>
+                </CardHeader>
+                <CardContent>
+                  <div className="border-t pt-4">
+                    {order.items.map((item, index) => (
+                      <div key={index} className="flex justify-between py-2">
+                        <p>{item.product_name} <span className="text-slate-500">x {item.quantity}</span></p>
+                        <p>₹{(item.price * item.quantity).toLocaleString('en-IN')}</p>
+                      </div>
+                    ))}
+                    <div className="border-t pt-2 mt-2 flex justify-between font-bold">
+                      <p>Total</p>
+                      <p>₹{order.total_amount.toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
