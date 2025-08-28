@@ -1,0 +1,132 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { Order } from "@/entities/Order";
+import { User } from "@/entities/User";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+
+export default function AdminOrders() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const allOrders = await Order.list("-created_date");
+      setOrders(allOrders);
+    } catch (error) {
+      toast.error("Failed to load orders.");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const checkAccess = async () => {
+      try {
+        const currentUser = await User.me();
+        if (currentUser.role !== 'admin') {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        setUser(currentUser);
+        await loadOrders();
+      } catch (error) {
+        setUser(null);
+        setLoading(false);
+      }
+    };
+    checkAccess();
+  }, [loadOrders]);
+  
+  const handleStatusUpdate = async (orderId, newStatus) => {
+    try {
+      await Order.update(orderId, { status: newStatus });
+      toast.success("Order status updated!");
+      // Update state locally for instant feedback
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId ? { ...order, status: newStatus } : order
+        )
+      );
+    } catch (error) {
+      toast.error("Failed to update status.");
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-12">Loading all orders...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-center">
+        <div>
+          <h1 className="text-2xl font-bold text-red-600 mb-2">Access Denied</h1>
+          <p className="text-slate-600">You must be an admin to view this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen pt-8 pb-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900">Manage All Orders</h1>
+        </div>
+        
+        <Card className="border-0 shadow-lg">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Items</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map(order => (
+                  <TableRow key={order.id}>
+                    <TableCell className="font-medium">#{order.id.slice(-8)}</TableCell>
+                    <TableCell>{order.user_email}</TableCell>
+                    <TableCell>{new Date(order.created_date).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {order.items.map((item, i) => (
+                        <div key={i} className="text-xs">{item.product_name} x{item.quantity}</div>
+                      ))}
+                    </TableCell>
+                    <TableCell>₹{order.total_amount.toLocaleString('en-IN')}</TableCell>
+                    <TableCell>
+                      <Select value={order.status} onValueChange={(value) => handleStatusUpdate(order.id, value)}>
+                        <SelectTrigger className="w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="confirmed">Confirmed</SelectItem>
+                          <SelectItem value="shipped">Shipped</SelectItem>
+                          <SelectItem value="delivered">Delivered</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
